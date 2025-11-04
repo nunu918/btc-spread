@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BTC 点差</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#007bff" />
+</head>
+<body class="bg-gray-50 min-h-screen p-4">
+  <div class="max-w-md mx-auto">
+    <h1 class="text-2xl font-bold text-center mb-4 text-blue-700">BTC 点差监控</h1>
+    <div id="alert" class="hidden bg-red-100 p-2 rounded mb-3 text-sm text-center">警报已推送</div>
+    <div class="bg-white rounded-lg shadow p-3 mb-4">
+      <table class="w-full text-sm" id="table">
+        <thead class="bg-blue-600 text-white text-xs">
+          <tr><th class="p-2">DEX</th><th>Spread</th><th>$100k</th><th>Funding</th></tr>
+        </thead>
+        <tbody class="text-center"><tr><td colspan="4">加载中...</td></tr></tbody>
+      </table>
+    </div>
+    <div class="bg-white rounded-lg shadow p-3">
+      <canvas id="chart" height="200"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const ctx = document.getElementById('chart').getContext('2d');
+    const chart = new Chart(ctx, { type: 'line', data: { labels: [], datasets: [
+      { label: 'Lighter', data: [], borderColor: '#3b82f6' },
+      { label: 'Paradex', data: [], borderColor: '#10b981' }
+    ]}, options: { responsive: true, plugins: { legend: { position: 'top' } } } });
+
+    const history = { t: [], l: [], p: [] };
+    async function update() {
+      try {
+        const res = await fetch('/api/data');
+        const d = await res.json();
+        document.querySelector('#table tbody').innerHTML = `
+          <tr><td class="font-bold text-blue-600">L</td><td>${d.l.s}%</td><td>${d.l.d}%</td><td>${d.l.f}%</td></tr>
+          <tr><td class="font-bold text-green-600">P</td><td>${d.p.s}%</td><td>${d.p.d}%</td><td>${d.p.f}%</td></tr>
+        `;
+        const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        history.t.push(now); history.l.push(d.l.s); history.p.push(d.p.s);
+        if (history.t.length > 20) { history.t.shift(); history.l.shift(); history.p.shift(); }
+        chart.data.labels = history.t; chart.data.datasets[0].data = history.l; chart.data.datasets[1].data = history.p;
+        chart.update();
+        if (d.alert) document.getElementById('alert').classList.remove('hidden');
+      } catch(e) {}
+    }
+    update(); setInterval(update, 10000);
+  </script>
+</body>
+</html>
