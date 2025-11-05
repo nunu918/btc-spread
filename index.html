@@ -1,56 +1,134 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BTC 点差</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BTC 点差监控</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#007bff" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes pulse { 0%,100% {opacity:1} 50% {opacity:0.7} }
+    .animate-pulse { animation: pulse 1s infinite; }
+  </style>
 </head>
 <body class="bg-gray-50 min-h-screen p-4">
-  <div class="max-w-md mx-auto">
-    <h1 class="text-2xl font-bold text-center mb-4 text-blue-700">BTC 点差监控</h1>
-    <div id="alert" class="hidden bg-red-100 p-2 rounded mb-3 text-sm text-center">警报已推送</div>
-    <div class="bg-white rounded-lg shadow p-3 mb-4">
+  <div class="max-w-md mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+    <h1 class="text-2xl font-bold text-center p-4 bg-gradient-to-r from-blue-600 to-blue-800 text-white">
+      BTC 点差监控
+    </h1>
+
+    <div class="p-4">
       <table class="w-full text-sm" id="table">
         <thead class="bg-blue-600 text-white text-xs">
-          <tr><th class="p-2">DEX</th><th>Spread</th><th>$100k</th><th>Funding</th></tr>
+          <tr>
+            <th class="p-2">DEX</th>
+            <th>Price (Mid)</th>
+            <th>价差 %</th>
+            <th>价差 $</th>
+            <th>Spread</th>
+            <th>$100k</th>
+            <th>Funding</th>
+          </tr>
         </thead>
-        <tbody class="text-center"><tr><td colspan="4">加载中...</td></tr></tbody>
+        <tbody class="text-center">
+          <tr id="price-diff-row" class="bg-yellow-50 font-bold">
+            <td class="p-2">价差</td>
+            <td id="lighter-price">-</td>
+            <td id="price-diff-pct">-</td>
+            <td id="price-diff-usd" class="font-mono">-$0.00</td>
+            <td colspan="3">-</td>
+          </tr>
+          <tr><td colspan="7" class="p-4 text-gray-500">加载中...</td></tr>
+        </tbody>
       </table>
-    </div>
-    <div class="bg-white rounded-lg shadow p-3">
-      <canvas id="chart" height="200"></canvas>
+
+      <div class="mt-6">
+        <canvas id="chart"></canvas>
+      </div>
     </div>
   </div>
 
   <script>
     const ctx = document.getElementById('chart').getContext('2d');
-    const chart = new Chart(ctx, { type: 'line', data: { labels: [], datasets: [
-      { label: 'Lighter', data: [], borderColor: '#3b82f6' },
-      { label: 'Paradex', data: [], borderColor: '#10b981' }
-    ]}, options: { responsive: true, plugins: { legend: { position: 'top' } } } });
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: [], datasets: [
+        { label: 'Lighter', data: [], borderColor: '#3B82F6', tension: 0.3, fill: false },
+        { label: 'Paradex', data: [], borderColor: '#10B981', tension: 0.3, fill: false }
+      ]},
+      options: { responsive: true, scales: { y: { beginAtZero: false } } }
+    });
 
-    const history = { t: [], l: [], p: [] };
+    let history = { l: [], p: [] };
+
     async function update() {
       try {
         const res = await fetch('/api/data');
         const d = await res.json();
+
+        // 更新表格
         document.querySelector('#table tbody').innerHTML = `
-          <tr><td class="font-bold text-blue-600">L</td><td>${d.l.s}%</td><td>${d.l.d}%</td><td>${d.l.f}%</td></tr>
-          <tr><td class="font-bold text-green-600">P</td><td>${d.p.s}%</td><td>${d.p.d}%</td><td>${d.p.f}%</td></tr>
+          <tr id="price-diff-row" class="bg-yellow-50 font-bold">
+            <td class="p-2">价差</td>
+            <td id="lighter-price">-</td>
+            <td id="price-diff-pct">-</td>
+            <td id="price-diff-usd" class="font-mono">-$0.00</td>
+            <td colspan="3">-</td>
+          </tr>
+          <tr class="border-b">
+            <td class="p-3 font-bold text-blue-600">L</td>
+            <td class="p-3">$${Number(d.l.mid).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+            <td>-</td>
+            <td>-</td>
+            <td class="p-3">${d.l.s}%</td>
+            <td class="p-3">${d.l.d}%</td>
+            <td class="p-3 text-xs">${d.l.f}%/h</td>
+          </tr>
+          <tr>
+            <td class="p-3 font-bold text-green-600">P</td>
+            <td class="p-3">$${Number(d.p.mid).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+            <td>-</td>
+            <td>-</td>
+            <td class="p-3">${d.p.s}%</td>
+            <td class="p-3">${d.p.d}%</td>
+            <td class="p-3 text-xs">${d.p.f}%/h</td>
+          </tr>
         `;
-        const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        history.t.push(now); history.l.push(d.l.s); history.p.push(d.p.s);
-        if (history.t.length > 20) { history.t.shift(); history.l.shift(); history.p.shift(); }
-        chart.data.labels = history.t; chart.data.datasets[0].data = history.l; chart.data.datasets[1].data = history.p;
-        chart.update();
-        if (d.alert) document.getElementById('alert').classList.remove('hidden');
-      } catch(e) {}
+
+        // 价差计算
+        const lighterMid = Number(d.l.mid) || 0;
+        const paradexMid = Number(d.p.mid) || 0;
+        const diffPct = paradexMid === 0 ? 0 : ((lighterMid - paradexMid) / paradexMid * 100).toFixed(4);
+        const diffUsd = (lighterMid - paradexMid).toFixed(2);
+
+        document.getElementById('lighter-price').innerText = `$${lighterMid.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+        document.getElementById('price-diff-pct').innerText = `${diffPct}%`;
+        document.getElementById('price-diff-usd').innerText = diffUsd > 0 ? `+$${diffUsd}` : `$${diffUsd}`;
+        document.getElementById('price-diff-usd').className = diffUsd > 0 ? 'font-mono text-green-600 font-bold' : 'font-mono text-red-600';
+
+        // 警报
+        const row = document.getElementById('price-diff-row');
+        if (Math.abs(diffUsd) > 50 || Math.abs(diffPct) > 0.05) {
+          row.className = 'bg-red-100 animate-pulse font-bold';
+        } else {
+          row.className = 'bg-yellow-50 font-bold';
+        }
+
+        // 图表
+        const now = new Date().toLocaleTimeString('zh', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+        history.l.push({x: now, y: parseFloat(d.l.s)});
+        history.p.push({x: now, y: parseFloat(d.p.s)});
+        if (history.l.length > 20) { history.l.shift(); history.p.shift(); }
+
+        chart.data.labels = history.l.map(p => p.x);
+        chart.data.datasets[0].data = history.l.map(p => p.y);
+        chart.data.datasets[1].data = history.p.map(p => p.y);
+        chart.update('quiet');
+      } catch (e) { console.error(e); }
     }
-    update(); setInterval(update, 10000);
+
+    update();
+    setInterval(update, 10000);
   </script>
 </body>
 </html>
